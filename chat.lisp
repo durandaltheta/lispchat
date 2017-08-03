@@ -1,4 +1,3 @@
-(load quicklisp.lisp)
 (ql:quickload "usocket")
 
 ;; print out the passed argv arguments for sanity
