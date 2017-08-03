@@ -1,5 +1,3 @@
-#!/usr/bin/sbcl --script
-
 (load quicklisp.lisp)
 (ql:quickload "usocket")
 
