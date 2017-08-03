@@ -1,25 +1,27 @@
 #!/usr/bin/sbcl --script
 
+(load quicklisp.lisp)
+(ql:quickload "usocket")
+
 ;; print out the passed argv arguments for sanity
 (format t "~s~%" *posix-argv*)
 
 ;; declare our chat parameters with default values
 ;; we'll resolve hostnames later so address can be ip4 or a hostname
-(defparameter *inp-address* "192.168.1.0") 
-(defparameter *inp-port* "22")
+(defparameter *address* "192.168.1.0") 
+(defparameter *port* 22)
 
 ;; switches default to false
 (defparameter *server* nil)
 
 ;; evaluate command line arguments (argv)
 (defun eval-arg (cur-arg prev-arg test test2 internal-param)
-  (if (or (string= prev-arg test) (string= prev-arg test2))
-    ((setf (symbol-value internal-param) cur-arg))))
+  (when (or (string= prev-arg test) (string= prev-arg test2))
+    (setf (symbol-value internal-param) cur-arg)))
 
 (defun eval-switch (cur-arg test test2 internal-param)
   (when (or (string= prev-arg test) (string= prev-arg test2)) 
-    (setf (symbol-value internal-param) t))
-  )
+    (setf (symbol-value internal-param) t)))
 
 ;; set chat parameters based on command line input
 (let ((prev-arg ""))
@@ -30,31 +32,42 @@
             (eval-switch cur-arg "--server" "-s" '*server*)
             (setf prev-arg cur-arg))))
 
-;; declare our internal connection variables
-(defparameter *address* 19216810)
-(defparameter *port* 22)
+(defparameter *buffer-length*)
 
-;; The following line:
-;; 1) resolves the host name (turns a "www.example.com" into an ip4 address)
-;; 2) removes the leading variable so we have a valid list of keywords
-;; 3) extract just the value of the ip address we want
-;; 4) translate the dotted ip value to a raw integer 
-;; 5) stores said ip address in the *address* parameter
-(setf *address* (dotted-to-ipaddr (getf (cdr (resolve-host-ipaddr *inp-address*)) :addr-list)))
-
-;; simply translate our port from a string to an int
-(setf *port* (parse-integer *inp-port*))
-
-;; start connecting
-(if *server* 
-  (let ((server (open-socket-server *port*))) ; if true
+(defun send-data (socket input)
+  (let ((buffer (simple-array (unsigned-byte 8) (list-length input))) (input-length (list-length input)) )
     (loop 
+      for i upto input-length collect i
+      (setf (nth i buffer) (parse-integer (nth i input))))
+    (socket-send socket buffer input-length)))
 
-      ;; listen for incoming connections
-      (let ((socket (socket-accept-server)))
-        
-        ;; spawn a process to handle the connection 
-        (make-process "Connection handler"
-                      #'handle-connection
-                      socket))
-  ()))) ; else
+(defun create-server (host port)
+  (let ((socket (socket-listen host port :element-type '(unsigned-byte 8))) 
+        (buffer (simple-array (unsigned-byte 8) *buffer-length*)))
+    (unwind-protect
+      (loop 
+        (let ((socket-list '()))
+          (setf socket-list (wait-for-input socket))
+          (loop
+            for s in socket-list do
+            (multiple-value-bind (return-buffer return-length remote-host remote-port) (socket-receive socket buffer nil)
+              (print return-buffer)))))
+      (socket-close socket))))
+
+(defun create-client (host port)
+  (let ((socket (socket-connect host port :element-type '(unsigned-byte 8)))
+        (input ""))
+    (unwind-protect 
+      (block nested-loop
+             (loop 
+               (let ((input "") (input-length 0))
+                 (setf input (read))
+                 (if (string= input "(exit-chat)")
+                   (return-from nested-loop))
+                 (send-data socket input))))
+      (socket-close socket))))
+
+(if *server* 
+  (create-server *address* *port*)
+  (create-client *address* *port*))
+
