@@ -1,3 +1,4 @@
+(load "~/quicklisp/setup.lisp")
 (ql:quickload "usocket")
 
 ;; print out the passed argv arguments for sanity
@@ -20,19 +21,22 @@
 
 ;; evaluate command line switches (argv)
 (defun eval-switch (cur-arg test test2 internal-param)
-  (when (or (string= prev-arg test) (string= prev-arg test2)) 
+  (when (or (string= cur-arg test) (string= cur-arg test2)) 
     (setf (symbol-value internal-param) t)))
 
 ;; set chat parameters based on command line input
 (let ((prev-arg ""))
-  (loop for cur-arg in *posix-argv* 
-        do ((eval-arg cur-arg prev-arg "--address" "-a" '*address*)
-            (eval-arg cur-arg prev-arg "--ip" "-i" '*address*)
-            (eval-arg cur-arg prev-arg "--port" "-p" '*port*)
-            (eval-arg cur-arg prev-arg "--interface" "-in" '*interface*)
-            (eval-arg cur-arg "--username" "-u" '*username*)
-            (eval-switch cur-arg "--server" "-s" '*server*)
-            (setf prev-arg cur-arg))))
+  (loop 
+    for cur-arg in *posix-argv* 
+    do (progn
+     (format t "cur-arg: ~s~%" cur-arg)
+     (eval-arg cur-arg prev-arg "--address" "-a" '*address*)
+     (eval-arg cur-arg prev-arg "--ip" "-i" '*address*)
+     (eval-arg cur-arg prev-arg "--port" "-p" '*port*)
+     (eval-arg cur-arg prev-arg "--interface" "-in" '*interface*)
+     (eval-arg cur-arg prev-arg "--username" "-u" '*username*)
+     (eval-switch cur-arg "--server" "-s" '*server*)
+     (setf prev-arg cur-arg))))
 
 ;; send data to the server, automatically handle string conversion to a buffer
 (defun send-data (socket input)
@@ -40,7 +44,7 @@
     (loop 
       for i upto input-length collect i
       (setf (nth i buffer) (parse-integer (nth i input))))
-    (socket-send socket buffer input-length)))
+    (usocket::socket-send socket buffer input-length)))
 
 ;; loop to gather user input to send
 (defun input-data (socket)
@@ -66,17 +70,18 @@
          (loop 
            (let ((socket-list '()))
              (setf socket-list (wait-for-input socket))
-             for s in socket-list do
-             (multiple-value-bind 
-               (return-buffer return-length remote-host remote-port) 
-               (socket-receive socket (simple-array (unsigned-byte 8) *) nil)
-               (if (not (eq return-buffer :eof))
-                 (handle-received-data return-buffer)
-                 (return-from receiver-nested-loop)))))))
+             (loop
+               for s in socket-list do
+               (multiple-value-bind 
+                 (return-buffer return-length remote-host remote-port) 
+                 (usocket::socket-receive socket (simple-array (unsigned-byte 8) *) nil)
+                 (if (not (eq return-buffer :eof))
+                   (handle-received-data return-buffer)
+                   (return-from receiver-nested-loop))))))))
 
 ;; create a server and set it to list 
 (defun create-server (host port)
-  (let ((socket (socket-listen host port :element-type '(unsigned-byte 8))) 
+  (let ((socket (usocket::socket-listen host port :element-type '(unsigned-byte 8))) 
         (input ""))
     (unwind-protect
       (block run-server-block
@@ -85,7 +90,7 @@
       (socket-close socket))))
 
 (defun create-client (host port)
-  (let ((socket ((socket-connect host port :element-type '(unsigned-byte 8))))
+  (let ((socket (usocket::socket-connect host port :element-type '(unsigned-byte 8)))
         (input ""))
     (unwind-protect 
       (block run-client-block
