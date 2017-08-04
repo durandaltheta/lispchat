@@ -8,11 +8,17 @@
 ;; we'll resolve hostnames later so address can be ip4 or a hostname
 (defparameter *address* "192.168.1.0") 
 (defparameter *port* 22)
-(defparameter *interface* "eth0")
+(defparameter *local-server-ip* "eth0")
 (defparameter *username* "u0")
 
 ;; switches default to false
 (defparameter *server* nil)
+
+(defparameter *params* '(*address*
+                          *port*
+                          *local-server-ip*
+                          *username*
+                          *server*))
 
 ;; evaluate command line arguments (argv)
 (defun eval-arg (cur-arg prev-arg test test2 internal-param)
@@ -31,18 +37,24 @@
     do (progn
      (format t "cur-arg: ~s~%" cur-arg)
      (eval-arg cur-arg prev-arg "--address" "-a" '*address*)
-     (eval-arg cur-arg prev-arg "--ip" "-i" '*address*)
      (eval-arg cur-arg prev-arg "--port" "-p" '*port*)
-     (eval-arg cur-arg prev-arg "--interface" "-in" '*interface*)
+     (eval-arg cur-arg prev-arg "--local-server-ip" "-l" '*local-server-ip*)
      (eval-arg cur-arg prev-arg "--username" "-u" '*username*)
      (eval-switch cur-arg "--server" "-s" '*server*)
      (setf prev-arg cur-arg))))
+
+(defun print-params ()
+  (loop
+    for i in *params* do 
+    (format t "~a: ~a~%" i (symbol-value i))))
+
+(print-params)
 
 ;; send data to the server, automatically handle string conversion to a buffer
 (defun send-data (socket input)
   (let ((buffer (simple-array (unsigned-byte 8) (list-length input))) (input-length (list-length input)) )
     (loop 
-      for i upto input-length collect i
+      for i upto input-length collect i do
       (setf (nth i buffer) (parse-integer (nth i input))))
     (usocket::socket-send socket buffer input-length)))
 
@@ -79,7 +91,7 @@
                    (handle-received-data return-buffer)
                    (return-from receiver-nested-loop))))))))
 
-;; create a server and set it to list 
+;; create a server and set it to listen
 (defun create-server (host port)
   (let ((socket (usocket::socket-listen host port :element-type '(unsigned-byte 8))) 
         (input ""))
@@ -89,6 +101,7 @@
              (input-data socket))
       (socket-close socket))))
 
+;; create a client and attempt to connect to a server
 (defun create-client (host port)
   (let ((socket (usocket::socket-connect host port :element-type '(unsigned-byte 8)))
         (input ""))
@@ -99,5 +112,5 @@
       (socket-close socket))))
 
 (if *server* 
-  (create-server *interface* *port*)
+  (create-server *local-server-ip* (parse-integer *port*))
   (create-client *address* *port*))
