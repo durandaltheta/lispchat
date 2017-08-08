@@ -1,6 +1,8 @@
 (load "~/quicklisp/setup.lisp")
 (ql:quickload "usocket")
 
+(load "defaults.lisp")
+
 ;; declare our chat parameters with default values
 ;; we'll resolve hostnames later so address can be ip4 or a hostname
 (defparameter *server-address* "192.168.1.0") 
