@@ -9,9 +9,9 @@
 ;;;
 ;;; I think following the 'rule of least suprise' is useful here. Yes, Lisp is its own universe, but
 ;;; the C world is is so much more ubiqutous I think it's beneficial to write code that's easier to understand from a
-;;; C naming mindset. Obviously, implementing a 'c syntax' would break the common-lisp definition. However, because lisp
-;;; is built around making a very customizable language (assuming stringent basic syntax), renaming for readability 
-;;; is well within Lisp's wheelhouse.
+;;; C naming mindset. Obviously, implementing a 'c syntax' would break the common-lisp definition (besides being undesirable
+;;; for other reasons). However, because lisp is built around making a very customizable language (assuming stringent basic 
+;;; syntax), renaming for readability is well within Lisp's wheelhouse.
 ;;;
 ;;; I generally subscribe to the idea that 'The best code is the most readable code'. Readable code helps to eliminate
 ;;; low hanging errors by providing fewer translation steps in the mind of the average reader. By renaming some common 
