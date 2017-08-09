@@ -1,21 +1,19 @@
-(load "~/quicklisp/setup.lisp")
+(load "defaults.lisp") ; load custom default aliases
 (ql:quickload "usocket")
-
-(load "defaults.lisp")
 
 ;; declare our chat parameters with default values
 ;; we'll resolve hostnames later so address can be ip4 or a hostname
-(defparameter *server-address* "192.168.1.0") 
-(defparameter *port* 22)
-(defparameter *username* "u0")
+(global *server-address* "192.168.1.0") 
+(global *port* "22")
+(global *username* "u0")
 
 ;; switches default to false
-(defparameter *server* nil)
+(global *server* nil)
 
-(defparameter *params* '(*server-address*
-                          *port*
-                          *username*
-                          *server*))
+(global *params* '(*server-address*
+                    *port*
+                    *username*
+                    *server*))
 
 ;; evaluate command line arguments (argv)
 (defun eval-arg (cur-arg prev-arg test test2 internal-param)
@@ -26,6 +24,20 @@
 (defun eval-switch (cur-arg test test2 internal-param)
   (when (or (string= cur-arg test) (string= cur-arg test2)) 
     (setf (symbol-value internal-param) t)))
+
+(defun eval-args (args)
+  ;; set chat parameters based on command line input
+  (let ((prev-arg ""))
+    (loop 
+      for cur-arg in args
+      do (progn
+           ;(format t "cur-arg: ~s~%" cur-arg)
+           (eval-arg cur-arg prev-arg "--server-address" "-a" '*server-address*)
+           (eval-arg cur-arg prev-arg "--port" "-p" '*port*)
+           (eval-arg cur-arg prev-arg "--username" "-u" '*username*)
+           (eval-switch cur-arg "--server" "-s" '*server*)
+           (format t "prev-arg: ~a, cur-arg: ~a~%" prev-arg cur-arg)
+           (setf prev-arg cur-arg)))))
 
 ;; iterate through a list of symbols printing both the name and value
 (defun print-params (params)
@@ -39,63 +51,60 @@
                             :element-type '(unsigned-byte 8)
                             :initial-element 0)) 
         (input-length (list-length input)))
-    (loop 
-      for i upto input-length collect i do
-      (setf (nth i buffer) (parse-integer (nth i input))))
+    (setf buffer (map '(vector (unsigned-byte 8)) #'char-code input))
     (usocket::socket-send socket buffer input-length)))
 
 ;; loop to gather user input to send
 (defun input-data (socket username)
   (loop 
-    (let ((input "") (prepend (concatenate username ": ")) (input-length 0))
+    (let ((input "") (prepend (concatenate 'string username ": ")))
       (setf input (read))
       (if (string= input "(exit-chat)")
-        (return))
-      (setf input (concatenate prepend input (list #\newline))) ; attach username to message
+          (return))
+      (setf input (concatenate 'string prepend input (list #\newline))) ; attach username to message
       (send-data socket input))))
 
 ;; handle received buffer and print to 
 (defun handle-received-data (buffer)
   (let ((output ""))
-    (loop 
-      for x in buffer do
-      (concatenate 'string output (write-to-string x)))
+    (setf output (map 'string #'code-char buffer))
     (print output)))
 
 ;; thread function to handle all incoming data
 (defun receive-thread (socket)
+  (format t "3")
   (block receiver-nested-loop
+         (format t "4")
          (loop 
-           (let ((socket-list '()))
-             (setf socket-list (usocket::wait-for-input socket))
+           (let ((ready-sockets (usocket::wait-for-input socket)))
+             (format t "5")
              (loop
-               for s in socket-list do
-               (multiple-value-bind 
-                 (return-buffer return-length remote-host remote-port) 
-                 (usocket::socket-receive socket nil nil)
+               for s in ready-sockets do
+               (let ((return-buffer (usocket::socket-receive s nil nil))) 
+                 (format t "6")
                  (if (not (eq return-buffer :eof))
-                   (handle-received-data return-buffer)
-                   (return-from receiver-nested-loop))))))))
+                     (handle-received-data return-buffer)
+                     (return-from receiver-nested-loop))))))))
 
 ;; create a server and set it to listen
 (defun create-server (host port username)
-  (let ((socket (usocket::socket-listen host port :element-type '(unsigned-byte 8))) 
-        (input ""))
+  (format t "1")
+  (let ((socket (usocket::socket-listen host port :element-type '(unsigned-byte 8))))
     (unwind-protect
       (block run-server-block
+             (format t "2")
              (sb-thread:make-thread (lambda () (receive-thread socket)))
              (input-data socket username))
       (usocket::socket-close socket))))
 
 ;; create a client and attempt to connect to a server
 (defun create-client (host port username)
-  (let ((socket (usocket::socket-connect host port :element-type '(unsigned-byte 8)))
-        (input ""))
+  (let ((socket (usocket::socket-connect host port :element-type '(unsigned-byte 8))))
     (unwind-protect 
       (block run-client-block
              (sb-thread:make-thread (lambda () (receive-thread socket)))
              (input-data socket username))
-      (socket-close socket))))
+      (usocket::socket-close socket))))
 
 ;; our main function
 (defun main () 
@@ -104,27 +113,16 @@
       ;; print out the passed argv arguments for sanity
       ;(format t "~s~%" *posix-argv*)
 
-      ;; set chat parameters based on command line input
-      (let ((prev-arg ""))
-        (loop 
-          for cur-arg in *posix-argv* 
-          do (progn
-               ;(format t "cur-arg: ~s~%" cur-arg)
-               (eval-arg cur-arg prev-arg "--address" "-a" '*address*)
-               (eval-arg cur-arg prev-arg "--port" "-p" '*port*)
-               (eval-arg cur-arg prev-arg "--local-server-ip" "-l" '*local-server-ip*)
-               (eval-arg cur-arg prev-arg "--username" "-u" '*username*)
-               (eval-switch cur-arg "--server" "-s" '*server*)
-               (setf prev-arg cur-arg))))
+      (eval-args *posix-argv*)
 
       (print-params *params*)
       (format t "~d~%" (parse-integer *port*))
 
       (if *server* 
-        (create-server *server-address* (parse-integer *port*) *username*)
-        (create-client *server-address* (parse-integer *port*) *username*)))
+          (create-server *server-address* (parse-integer *port*) *username*)
+          (create-client *server-address* (parse-integer *port*) *username*))
+      (sb-ext:exit))
     (sb-sys:interactive-interrupt (e)
-                                    (format t "Exiting chat~%")
-                                    (sb-ext:quit))))
+                                  (format t "Exiting chat~a~%" e)
+                                  (sb-ext:exit))))
 
-(main)
