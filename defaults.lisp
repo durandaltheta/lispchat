@@ -41,13 +41,13 @@
 ;; prefer to use (set), but I can't because that risks breaking something
 ;; internal to common-lisp :(. While one of the more minor problems, it is
 ;; confusing to have the basic 'set equal to' operator be a macro 'version' of
-;; the core operators.
+;; the core operators. I just want to use the name 'set'!
 ;;
 ;; first preserve the old usage of (=)
 ;(setf (fdefinition 'old-=) #'=)
 ;; then set our new one
 ;(setf (macro-function '=) (macro-function 'setf)) 
-(setf (macro-function 'put) (macro-function 'setf))
+;(setf (macro-function 'put) (macro-function 'setf))
 
 ;; there's like 5 ways to check equivalency, I want the standard c/java style
 ;; for the general usecase

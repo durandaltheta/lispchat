@@ -73,15 +73,19 @@
 ;; thread function to handle all incoming data
 (defun receive-thread (socket)
   (format t "3")
+            (finish-output)
   (block receiver-nested-loop
          (format t "4")
+            (finish-output)
          (loop 
            (let ((ready-sockets (usocket::wait-for-input socket)))
              (format t "5")
+            (finish-output)
              (loop
                for s in ready-sockets do
                (let ((return-buffer (usocket::socket-receive s nil nil))) 
                  (format t "6")
+            (finish-output)
                  (if (not (eq return-buffer :eof))
                      (handle-received-data return-buffer)
                      (return-from receiver-nested-loop))))))))
@@ -93,6 +97,7 @@
     (unwind-protect
       (block run-server-block
              (format t "2")
+            (finish-output)
              (sb-thread:make-thread (lambda () (receive-thread socket)))
              (input-data socket username))
       (usocket::socket-close socket))))
@@ -119,10 +124,17 @@
       (format t "~d~%" (parse-integer *port*))
 
       (if *server* 
-          (create-server *server-address* (parse-integer *port*) *username*)
-          (create-client *server-address* (parse-integer *port*) *username*))
+          (progn
+            (format t "entering create-server~%")
+            (finish-output)
+            (create-server *server-address* (parse-integer *port*) *username*)) 
+          (progn
+            (format t "entering create-client~%")
+            (finish-output)
+            (create-client *server-address* (parse-integer *port*) *username*))) 
+      (format t "past main functions")
       (sb-ext:exit))
     (sb-sys:interactive-interrupt (e)
-                                  (format t "Exiting chat~a~%" e)
+                                  (format t "Exiting chat: ~a~%" e)
                                   (sb-ext:exit))))
 
