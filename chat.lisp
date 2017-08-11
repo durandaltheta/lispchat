@@ -1,19 +1,22 @@
-(load "defaults.lisp") ; load custom default aliases
 (ql:quickload "usocket")
 
 ;; declare our chat parameters with default values
 ;; we'll resolve hostnames later so address can be ip4 or a hostname
-(global *server-address* "192.168.1.0") 
-(global *port* "22")
-(global *username* "u0")
+(defparameter *server-address* "192.168.1.0") 
+(defparameter *port* "22")
+(defparameter *username* "u0")
 
 ;; switches default to false
-(global *server* nil)
+(defparameter *server* nil)
 
-(global *params* '(*server-address*
-                    *port*
-                    *username*
-                    *server*))
+(defparameter *params* '(*server-address*
+                          *port*
+                          *username*
+                          *server*))
+
+(defun debug-print (func str)
+  (format t "~s:~s~%" func str)
+  (finish-output))
 
 ;; evaluate command line arguments (argv)
 (defun eval-arg (cur-arg prev-arg test test2 internal-param)
@@ -25,8 +28,8 @@
   (when (or (string= cur-arg test) (string= cur-arg test2)) 
     (setf (symbol-value internal-param) t)))
 
+;; set chat parameters based on command line input
 (defun eval-args (args)
-  ;; set chat parameters based on command line input
   (let ((prev-arg ""))
     (loop 
       for cur-arg in args
@@ -52,16 +55,20 @@
                             :initial-element 0)) 
         (input-length (list-length input)))
     (setf buffer (map '(vector (unsigned-byte 8)) #'char-code input))
-    (usocket::socket-send socket buffer input-length)))
+    (usocket:socket-send socket buffer input-length)))
 
 ;; loop to gather user input to send
 (defun input-data (socket username)
   (loop 
-    (let ((input "") (prepend (concatenate 'string username ": ")))
+    (let ((input (make-array 0 :element-type 'character :fill-pointer 0 :adjustable t))
+          (prepend (concatenate 'string username ": ")))
       (setf input (read))
+      (debug-print "input-data user input:" input)
       (if (string= input "(exit-chat)")
           (return))
-      (setf input (concatenate 'string prepend input (list #\newline))) ; attach username to message
+      ;; attach username to message 
+      ;(format t "~s~s~%" prepend input)
+      (setf input (concatenate 'string prepend input "~%")) 
       (send-data socket input))))
 
 ;; handle received buffer and print to 
@@ -72,44 +79,41 @@
 
 ;; thread function to handle all incoming data
 (defun receive-thread (socket)
-  (format t "3")
-            (finish-output)
+  (debug-print "receive-thread" "1")
   (block receiver-nested-loop
-         (format t "4")
-            (finish-output)
+         (debug-print "receive-thread" "2")
          (loop 
-           (let ((ready-sockets (usocket::wait-for-input socket)))
-             (format t "5")
-            (finish-output)
-             (loop
-               for s in ready-sockets do
-               (let ((return-buffer (usocket::socket-receive s nil nil))) 
-                 (format t "6")
-            (finish-output)
-                 (if (not (eq return-buffer :eof))
-                     (handle-received-data return-buffer)
-                     (return-from receiver-nested-loop))))))))
+           (let ((ready-socket (usocket:wait-for-input socket)))
+             (debug-print "receive-thread" "3")
+             (let ((return-buffer (usocket:socket-receive ready-socket nil nil))) 
+               (debug-print "receive-thread" "4")
+               (if (not (eq return-buffer :eof))
+                   (handle-received-data return-buffer)
+                   (return-from receiver-nested-loop)))))))
+
+;; handle the chat communication
+(defun handle-connection (socket username)
+  (unwind-protect
+    (block run-server-block
+           (debug-print "handle-connection" "1")
+           (sb-thread:make-thread (lambda () 
+                                    (progn
+                                      (receive-thread socket))))
+           (input-data socket username))
+    (usocket:socket-close socket)))
 
 ;; create a server and set it to listen
 (defun create-server (host port username)
-  (format t "1")
-  (let ((socket (usocket::socket-listen host port :element-type '(unsigned-byte 8))))
-    (unwind-protect
-      (block run-server-block
-             (format t "2")
-            (finish-output)
-             (sb-thread:make-thread (lambda () (receive-thread socket)))
-             (input-data socket username))
-      (usocket::socket-close socket))))
+  (debug-print "create-server" "1")
+  (let ((socket (usocket:socket-listen host port :element-type '(unsigned-byte 8))))
+    (loop 
+      (handle-connection (usocket:socket-accept socket) username))))
 
 ;; create a client and attempt to connect to a server
 (defun create-client (host port username)
-  (let ((socket (usocket::socket-connect host port :element-type '(unsigned-byte 8))))
-    (unwind-protect 
-      (block run-client-block
-             (sb-thread:make-thread (lambda () (receive-thread socket)))
-             (input-data socket username))
-      (usocket::socket-close socket))))
+  (debug-print "create-client" "1")
+  (let ((socket (usocket:socket-connect host port :element-type '(unsigned-byte 8))))
+    (handle-connection socket username)))
 
 ;; our main function
 (defun main () 
@@ -125,12 +129,10 @@
 
       (if *server* 
           (progn
-            (format t "entering create-server~%")
-            (finish-output)
+            (debug-print "main" "entering create-server")
             (create-server *server-address* (parse-integer *port*) *username*)) 
           (progn
-            (format t "entering create-client~%")
-            (finish-output)
+            (debug-print "main" "entering create-client")
             (create-client *server-address* (parse-integer *port*) *username*))) 
       (format t "past main functions")
       (sb-ext:exit))
